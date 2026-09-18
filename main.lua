@@ -1,5 +1,7 @@
 -- name: Bowser Quick Time Event
 
+local configSounds = mod_storage_load_integer("configSounds", 0)
+
 local m = gMarioStates[0] ---@type MarioState
 local l = gLakituState
 
@@ -10,7 +12,11 @@ local quickTimeInputs = {
     {func = function (c) return c.buttonPressed & R_TRIG ~= 0 end, text = "R"},
 }
 local currQuickTime = {}
-local timePerInput = 20
+local timePerInput = 15
+
+local SOUND_UNLEASHED_FINISHED = audio_sample_load("qte_unleashed_finished.ogg")
+local SOUND_UNLEASHED_HIT = audio_sample_load("qte_unleashed_hit.ogg")
+local SOUND_UNLEASHED_MISS = audio_sample_load("qte_unleashed_miss.ogg")
 
 local function act_hold_bowser_qte(m)
     if not m then return end
@@ -34,7 +40,7 @@ local function act_hold_bowser_qte(m)
     -- Initialize Quick Time event
     if m.actionState == 0 then
         currQuickTime = {}
-        for i = 0, 10 do
+        for i = 0, 15 do
             local input = quickTimeInputs[math.random(1, #quickTimeInputs)]
             table.insert(currQuickTime, {
                 func = input.func,
@@ -65,12 +71,20 @@ local function act_hold_bowser_qte(m)
         for _, input in pairs(currQuickTime) do
             if not input.hit then
                 if input.func(m.controller) then
-                    play_sound(SOUND_MENU_CLICK_FILE_SELECT, gGlobalSoundSource)
+                    if configSounds == 0 then
+                        play_sound(SOUND_MENU_CLICK_FILE_SELECT, gGlobalSoundSource)
+                    elseif configSounds == 1 then
+                        audio_sample_play(SOUND_UNLEASHED_HIT, gGlobalSoundSource, 1)
+                    end
                     input.hit = true
                 else
                     for _, input in pairs(quickTimeInputs) do
                         if input.func(m.controller) then
-                            play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
+                            if configSounds == 0 then
+                                play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
+                            elseif configSounds == 1 then
+                                audio_sample_play(SOUND_UNLEASHED_MISS, gGlobalSoundSource, 1)
+                            end
                             m.actionTimer = m.actionTimer + 15
                         end
                     end
@@ -80,6 +94,11 @@ local function act_hold_bowser_qte(m)
             end
         end
         if complete then
+            if configSounds == 0 then
+                play_puzzle_jingle()
+            elseif configSounds == 1 then
+                audio_sample_play(SOUND_UNLEASHED_FINISHED, gGlobalSoundSource, 1)
+            end
             m.actionState = 3
         elseif m.actionTimer > #currQuickTime * timePerInput then
             m.actionState = 2
@@ -218,3 +237,34 @@ end
 
 hook_event(HOOK_UPDATE, update)
 hook_event(HOOK_ON_HUD_RENDER, on_hud_render)
+
+---@param string string
+--- Splits a string into a table by spaces
+local function string_split(string, splitAt)
+    if splitAt == nil then
+        splitAt = " "
+    end
+    local result = {}
+    for match in string:gmatch(string.format("[^%s]+", splitAt)) do
+        table.insert(result, match)
+    end
+    return result
+end
+
+local function chat_command(msg)
+    msg = string.lower(msg)
+    msgSplit = string_split(msg)
+    if msgSplit[1] == "sounds" then
+        if msgSplit[2] == "sm64" then
+            configSounds = 0
+            mod_storage_save_integer("configSounds", configSounds)
+        elseif msgSplit[2] == "unleashed" then
+            configSounds = 1
+            mod_storage_save_integer("configSounds", configSounds)
+        end
+    end
+
+    return true
+end
+
+hook_chat_command("qte", "Configure Quick Time Event Settings", chat_command)

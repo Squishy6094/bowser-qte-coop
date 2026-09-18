@@ -1,0 +1,220 @@
+-- name: Bowser Quick Time Event
+
+local m = gMarioStates[0] ---@type MarioState
+local l = gLakituState
+
+local quickTimeInputs = {
+    {func = function (c) return c.buttonPressed & A_BUTTON ~= 0 end, text = "A"},
+    {func = function (c) return c.buttonPressed & B_BUTTON ~= 0 end, text = "B"},
+    {func = function (c) return c.buttonPressed & Z_TRIG ~= 0 end, text = "Z"},
+    {func = function (c) return c.buttonPressed & R_TRIG ~= 0 end, text = "R"},
+}
+local currQuickTime = {}
+local timePerInput = 20
+
+local function act_hold_bowser_qte(m)
+    if not m then return end
+    local nearestBomb = cur_obj_nearest_object_with_behavior(get_behavior_from_id(id_bhvBowserBomb))
+    if (m.playerIndex ~= 0) then
+        if (m.marioBodyState.grabPos ~= GRAB_POS_BOWSER) then
+            m.usedObj = cur_obj_nearest_object_with_behavior(get_behavior_from_id(id_bhvBowser));
+            m.angleVel.y = 0;
+            m.marioBodyState.grabPos = GRAB_POS_BOWSER;
+            mario_grab_used_object(m);
+            if (m.heldObj ~= nil) then
+                queue_rumble_data_mario(m, 5, 80);
+                play_character_sound(m, CHAR_SOUND_HRMM);
+            else
+                set_mario_action(m, ACT_IDLE, 0);
+                return 0;
+            end
+        end
+    end
+
+    -- Initialize Quick Time event
+    if m.actionState == 0 then
+        currQuickTime = {}
+        for i = 0, 10 do
+            local input = quickTimeInputs[math.random(1, #quickTimeInputs)]
+            table.insert(currQuickTime, {
+                func = input.func,
+                text = input.text,
+                hit = false,
+                opacity = 255,
+            })
+        end
+        m.actionState = 1
+    end
+
+    -- Quick Time Event
+    if m.actionState == 1 then
+        m.actionTimer = m.actionTimer + 1
+
+        if nearestBomb then
+            local bombAngle = atan2s(nearestBomb.oPosZ - m.pos.z, nearestBomb.oPosX - m.pos.x)
+            l.focus.x = math.lerp(l.focus.x, nearestBomb.oPosX + sins(bombAngle-0x4000)*1000, 0.1)
+            l.focus.y = math.lerp(l.focus.y, nearestBomb.oPosY, 0.1)
+            l.focus.z = math.lerp(l.focus.z, nearestBomb.oPosZ + coss(bombAngle-0x4000)*1000, 0.1)
+
+            l.pos.x = math.lerp(l.pos.x, m.pos.x + sins(bombAngle+0x6000)*800, 0.1)
+            l.pos.y = math.lerp(l.pos.y, m.pos.y + 100, 0.1)
+            l.pos.z = math.lerp(l.pos.z, m.pos.z + coss(bombAngle+0x6000)*800, 0.1)
+        end
+
+        local complete = true
+        for _, input in pairs(currQuickTime) do
+            if not input.hit then
+                if input.func(m.controller) then
+                    play_sound(SOUND_MENU_CLICK_FILE_SELECT, gGlobalSoundSource)
+                    input.hit = true
+                else
+                    for _, input in pairs(quickTimeInputs) do
+                        if input.func(m.controller) then
+                            play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
+                            m.actionTimer = m.actionTimer + 15
+                        end
+                    end
+                end
+                complete = false
+                break
+            end
+        end
+        if complete then
+            m.actionState = 3
+        elseif m.actionTimer > #currQuickTime * timePerInput then
+            m.actionState = 2
+        end
+    end
+
+    if (m.playerIndex == 0 and (m.actionState == 2 or m.actionState == 3 or not nearestBomb)) then
+        if not nearestBomb then
+            play_character_sound(m, CHAR_SOUND_MAMA_MIA);
+            return set_mario_action(m, ACT_RELEASING_BOWSER, 0);
+        else
+            local bombAngle = atan2s(nearestBomb.oPosZ - m.pos.z, nearestBomb.oPosX - m.pos.x) + (m.actionState == 2 and 0x2000 or 0)
+            if m.angleVel.y >= 0xFFF and math.abs(math.s16(m.faceAngle.y - bombAngle)) < 0x800 then
+                if m.actionState == 2 then
+                    play_character_sound(m, CHAR_SOUND_WHOA);
+                else
+                    play_character_sound(m, CHAR_SOUND_SO_LONGA_BOWSER);
+                end
+                return set_mario_action(m, ACT_RELEASING_BOWSER, 0);
+            end
+        end
+    end
+
+    --[[
+    if (m.playerIndex == 0 and m.angleVel.y == 0) then
+        if (m.actionTimer > 120) then
+            return set_mario_action(m, ACT_RELEASING_BOWSER, 1);
+        end
+
+        set_character_animation(m, CHAR_ANIM_HOLDING_BOWSER);
+    else
+        m.actionTimer = 0;
+        set_character_animation(m, CHAR_ANIM_SWINGING_BOWSER);
+    end
+    ]]
+
+    --if (m.intendedMag > 20.0) then
+        if (m.actionArg == 0) then
+            m.actionArg = 1;
+            m.twirlYaw = m.intendedYaw;
+        else
+            -- spin = acceleration
+            local spin = 0x30--math.s16(m.intendedYaw - m.twirlYaw) / 0x80;
+
+            if (spin < -0x80) then
+                spin = -0x80;
+            end
+            if (spin > 0x80) then
+                spin = 0x80;
+            end
+
+            m.twirlYaw = m.intendedYaw;
+            m.angleVel.y = m.angleVel.y + spin;
+
+            if (m.angleVel.y > 0x1000) then
+                m.angleVel.y = 0x1000;
+            end
+            if (m.angleVel.y < -0x1000) then
+                m.angleVel.y = -0x1000;
+            end
+        end
+    --else
+    --    m.actionArg = 0;
+    --    m.angleVel.y = approach_s32(m.angleVel.y, 0, 64, 64);
+    --end
+
+    -- spin = starting yaw
+    spin = m.faceAngle.y;
+    m.faceAngle.y = m.angleVel.y + spin;
+
+    -- play sound on overflow
+    if (m.angleVel.y <= -0x100 and spin < m.faceAngle.y) then
+        queue_rumble_data_mario(m, 4, 20);
+        play_sound(SOUND_OBJ_BOWSER_SPINNING, m.marioObj.header.gfx.cameraToObject);
+    end
+    if (m.angleVel.y >= 0x100 and spin > m.faceAngle.y) then
+        queue_rumble_data_mario(m, 4, 20);
+        play_sound(SOUND_OBJ_BOWSER_SPINNING, m.marioObj.header.gfx.cameraToObject);
+    end
+
+    stationary_ground_step(m);
+    if (m.angleVel.y >= 0) then
+        m.marioObj.header.gfx.angle.x = -m.angleVel.y;
+    else
+        m.marioObj.header.gfx.angle.x = m.angleVel.y;
+    end
+
+    return 0;
+end
+
+hook_mario_action(ACT_HOLDING_BOWSER, act_hold_bowser_qte)
+
+local wasQuickTime = false
+local xPosLerp = 0
+local greyLerp = 1
+local function on_hud_render()
+    djui_hud_set_resolution(RESOLUTION_N64)
+
+    if m.action == ACT_HOLDING_BOWSER or m.action == ACT_RELEASING_BOWSER then
+        wasQuickTime = true
+        if m.action == ACT_HOLDING_BOWSER and m.actionState == 1 then
+            local totalTimer = (#currQuickTime * timePerInput)
+            greyLerp = math.lerp(greyLerp, 0.2 + 0.4*(m.actionTimer/totalTimer), 0.1)
+            djui_hud_set_font(FONT_HUD)
+            local xPosTarget = 0
+            for inputNum, input in pairs(currQuickTime) do
+                if input.hit then
+                    xPosTarget = xPosTarget + 18
+                    input.opacity = math.lerp(input.opacity, 0, 0.2)
+                end
+                djui_hud_set_color(255, 255, 255, input.opacity)
+                djui_hud_print_text(input.text, 50 + math.max((inputNum - 1)*18 - xPosLerp, 0), 50 + (1 - input.opacity/255)*50, 1, 1)
+            end
+            xPosLerp = math.lerp(xPosLerp, xPosTarget, 0.2)
+            djui_hud_render_rect(50, 70, (#currQuickTime * timePerInput) - m.actionTimer, 5)
+            -- cam logic in action
+        else
+            greyLerp = math.lerp(greyLerp, 1, 0.1)
+        end
+        set_shader_flag_enabled(SHADER_FLAG_SATURATION, true)
+        set_shader_flag_value(SHADER_FLAG_SATURATION, greyLerp)
+        camera_freeze()
+    elseif wasQuickTime then
+        set_shader_flag_enabled(SHADER_FLAG_SATURATION, false)
+        camera_unfreeze()
+        xPosLerp = 0
+        greyLerp = 1
+    end
+end
+
+local function update()
+    if gMarioStates[0].controller.buttonPressed & U_JPAD ~= 0 then
+        warp_to_level(LEVEL_BOWSER_3, 1, 0)
+    end
+end
+
+hook_event(HOOK_UPDATE, update)
+hook_event(HOOK_ON_HUD_RENDER, on_hud_render)

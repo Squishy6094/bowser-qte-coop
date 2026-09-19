@@ -1,4 +1,6 @@
--- name: Bowser Quick Time Event
+-- name: Quick Time Event
+-- description: Turns Bowser Throwing into a\nQuick Time Event\nUse\\#ffff33\\ /qte\\#dcdcdc\\ for options\n\nCreated by:\\#008800\\ Squishy6094
+-- category: qol
 
 local configSounds = mod_storage_load_integer("configSounds", 0)
 
@@ -27,7 +29,6 @@ local SOUND_UNLEASHED_HIT = audio_sample_load("qte_unleashed_hit.ogg")
 local SOUND_UNLEASHED_MISS = audio_sample_load("qte_unleashed_miss.ogg")
 
 local function get_bowser_qte_inputs(o)
-    djui_chat_message_create(tostring(o.oHealth))
     if brutal then
         if o.oBehParams2ndByte == 0 then
             if o.oHealth == 3 then
@@ -88,78 +89,79 @@ local function act_hold_bowser_qte(m)
                 return 0;
             end
         end
-    end
-
-    -- Initialize Quick Time event
-    if m.actionState == 0 then
-        currQuickTime = {}
-        local inputCount = 1
-        inputCount, timePerInput = get_bowser_qte_inputs(m.usedObj)
-        for i = 1, inputCount do
-            local input = quickTimeInputs[math.random(1, #quickTimeInputs)]
-            table.insert(currQuickTime, {
-                func = input.func,
-                text = input.text,
-                hit = false,
-                opacity = 255,
-            })
-        end
-        m.actionState = 1
-    end
-
-    -- Quick Time Event
-    if m.actionState == 1 then
-        m.actionTimer = m.actionTimer + 1
-
-        if nearestBomb then
-            local bombAngle = atan2s(nearestBomb.oPosZ - m.pos.z, nearestBomb.oPosX - m.pos.x)
-            l.focus.x = math.lerp(l.focus.x, nearestBomb.oPosX + sins(bombAngle-0x4000)*1000, 0.1)
-            l.focus.y = math.lerp(l.focus.y, nearestBomb.oPosY, 0.1)
-            l.focus.z = math.lerp(l.focus.z, nearestBomb.oPosZ + coss(bombAngle-0x4000)*1000, 0.1)
-
-            l.pos.x = math.lerp(l.pos.x, m.pos.x + sins(bombAngle+0x6000)*800, 0.1)
-            l.pos.y = math.lerp(l.pos.y, m.pos.y + 100, 0.1)
-            l.pos.z = math.lerp(l.pos.z, m.pos.z + coss(bombAngle+0x6000)*800, 0.1)
+    else
+        -- Initialize Quick Time event
+        if m.actionState == 0 then
+            currQuickTime = {}
+            local inputCount = 1
+            inputCount, timePerInput = get_bowser_qte_inputs(m.usedObj)
+            for i = 1, inputCount do
+                local input = quickTimeInputs[math.random(1, #quickTimeInputs)]
+                table.insert(currQuickTime, {
+                    func = input.func,
+                    text = input.text,
+                    hit = false,
+                    opacity = 255,
+                })
+            end
+            m.actionState = 1
         end
 
-        local complete = true
-        for inputNum, input in pairs(currQuickTime) do
-            if not input.hit then
-                if input.func(m.controller) then
-                    if configSounds == 0 then
-                        play_sound_with_freq_scale(SOUND_MENU_CLICK_CHANGE_VIEW, gGlobalSoundSource, 0.9 + 0.4*(inputNum/#currQuickTime))
-                    elseif configSounds == 1 then
-                        audio_sample_play(SOUND_UNLEASHED_HIT, gGlobalSoundSource, 1)
-                    end
-                    input.hit = true
-                else
-                    for _, input in pairs(quickTimeInputs) do
-                        if input.func(m.controller) then
-                            if configSounds == 0 then
-                                play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
-                            elseif configSounds == 1 then
-                                audio_sample_stop(SOUND_UNLEASHED_MISS)
-                                audio_sample_play(SOUND_UNLEASHED_MISS, gGlobalSoundSource, 1)
+        -- Quick Time Event
+        if m.actionState == 1 then
+            m.actionTimer = m.actionTimer + 1
+
+            if nearestBomb then
+                local bombAngle = atan2s(nearestBomb.oPosZ - m.pos.z, nearestBomb.oPosX - m.pos.x)
+                l.focus.x = math.lerp(l.focus.x, nearestBomb.oPosX + sins(bombAngle-0x4000)*1000, 0.1)
+                l.focus.y = math.lerp(l.focus.y, nearestBomb.oPosY, 0.1)
+                l.focus.z = math.lerp(l.focus.z, nearestBomb.oPosZ + coss(bombAngle-0x4000)*1000, 0.1)
+
+                l.pos.x = math.lerp(l.pos.x, m.pos.x + sins(bombAngle+0x6000)*800, 0.1)
+                l.pos.y = math.lerp(l.pos.y, m.pos.y + 100, 0.1)
+                l.pos.z = math.lerp(l.pos.z, m.pos.z + coss(bombAngle+0x6000)*800, 0.1)
+            end
+
+            local complete = true
+            for inputNum, input in pairs(currQuickTime) do
+                if not input.hit then
+                    if input.func(m.controller) then
+                        if configSounds == 0 then
+                            play_sound_with_freq_scale(SOUND_MENU_CLICK_CHANGE_VIEW, gGlobalSoundSource, 0.8 + 0.4*(inputNum/#currQuickTime))
+                        elseif configSounds == 1 then
+                            audio_sample_play(SOUND_UNLEASHED_HIT, gGlobalSoundSource, 1)
+                        end
+                        input.hit = true
+                    else
+                        for _, input in pairs(quickTimeInputs) do
+                            if input.func(m.controller) then
+                                if configSounds == 0 then
+                                    play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
+                                elseif configSounds == 1 then
+                                    audio_sample_stop(SOUND_UNLEASHED_MISS)
+                                    audio_sample_play(SOUND_UNLEASHED_MISS, gGlobalSoundSource, 1)
+                                end
+                                m.actionTimer = m.actionTimer + timePerInput*0.5
                             end
-                            m.actionTimer = m.actionTimer + timePerInput*0.5
                         end
                     end
+                    complete = false
+                    break
                 end
-                complete = false
-                break
             end
-        end
-        if complete then
-            if configSounds == 0 then
-                play_sound(SOUND_GENERAL2_RIGHT_ANSWER, gGlobalSoundSource)
-            elseif configSounds == 1 then
-                audio_sample_play(SOUND_UNLEASHED_FINISHED, gGlobalSoundSource, 1)
+            if complete then
+                if configSounds == 0 then
+                    play_sound(SOUND_GENERAL2_RIGHT_ANSWER, gGlobalSoundSource)
+                elseif configSounds == 1 then
+                    audio_sample_play(SOUND_UNLEASHED_FINISHED, gGlobalSoundSource, 1)
+                end
+                m.actionState = 3
+            elseif m.actionTimer > #currQuickTime * timePerInput then
+                m.actionState = 2
             end
-            m.actionState = 3
-        elseif m.actionTimer > #currQuickTime * timePerInput then
-            m.actionState = 2
         end
     end
+
 
     if (m.playerIndex == 0 and (m.actionState == 2 or m.actionState == 3 or not nearestBomb)) then
         if not nearestBomb then
@@ -313,19 +315,6 @@ local function on_hud_render()
     end
 end
 
-local function update()
-    if gMarioStates[0].controller.buttonPressed & U_JPAD ~= 0 then
-        warp_to_level(LEVEL_BOWSER_3, 1, 0)
-    end
-    if gMarioStates[0].controller.buttonPressed & L_JPAD ~= 0 then
-        warp_to_level(LEVEL_BOWSER_1, 1, 0)
-    end
-    if gMarioStates[0].controller.buttonPressed & R_JPAD ~= 0 then
-        warp_to_level(LEVEL_BOWSER_2, 1, 0)
-    end
-end
-
-hook_event(HOOK_UPDATE, update)
 hook_event(HOOK_ON_MODS_LOADED, function()
     hook_event(HOOK_ON_HUD_RENDER, on_hud_render)
 end)

@@ -12,11 +12,27 @@ local quickTimeInputs = {
     {func = function (c) return c.buttonPressed & R_TRIG ~= 0 end, text = "R"},
 }
 local currQuickTime = {}
-local timePerInput = 15
+local timePerInput = 30
 
 local SOUND_UNLEASHED_FINISHED = audio_sample_load("qte_unleashed_finished.ogg")
 local SOUND_UNLEASHED_HIT = audio_sample_load("qte_unleashed_hit.ogg")
 local SOUND_UNLEASHED_MISS = audio_sample_load("qte_unleashed_miss.ogg")
+
+local function get_bowser_qte_inputs(o)
+    if o.oBehParams2ndByte == 0 then
+        return 5, 30
+    elseif o.oBehParams2ndByte == 1 then
+        return 10, 20
+    elseif o.oBehParams2ndByte == 2 then
+        if o.oHealth == 3 then
+            return 15, 15
+        elseif o.oHealth == 2 then
+            return 17, 15
+        elseif o.oHealth == 1 then
+            return 20, 15
+        end
+    end
+end
 
 local function act_hold_bowser_qte(m)
     if not m then return end
@@ -37,10 +53,14 @@ local function act_hold_bowser_qte(m)
         end
     end
 
+    djui_chat_message_create(tostring(m.usedObj.oHealth))
+
     -- Initialize Quick Time event
     if m.actionState == 0 then
         currQuickTime = {}
-        for i = 0, 15 do
+        local inputCount = 1
+        inputCount, timePerInput = get_bowser_qte_inputs(m.usedObj)
+        for i = 1, inputCount do
             local input = quickTimeInputs[math.random(1, #quickTimeInputs)]
             table.insert(currQuickTime, {
                 func = input.func,
@@ -68,11 +88,11 @@ local function act_hold_bowser_qte(m)
         end
 
         local complete = true
-        for _, input in pairs(currQuickTime) do
+        for inputNum, input in pairs(currQuickTime) do
             if not input.hit then
                 if input.func(m.controller) then
                     if configSounds == 0 then
-                        play_sound(SOUND_MENU_CLICK_FILE_SELECT, gGlobalSoundSource)
+                        play_sound_with_freq_scale(SOUND_MENU_CLICK_CHANGE_VIEW, gGlobalSoundSource, 0.9 + 0.4*(inputNum/#currQuickTime))
                     elseif configSounds == 1 then
                         audio_sample_play(SOUND_UNLEASHED_HIT, gGlobalSoundSource, 1)
                     end
@@ -83,9 +103,10 @@ local function act_hold_bowser_qte(m)
                             if configSounds == 0 then
                                 play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource)
                             elseif configSounds == 1 then
+                                audio_sample_stop(SOUND_UNLEASHED_MISS)
                                 audio_sample_play(SOUND_UNLEASHED_MISS, gGlobalSoundSource, 1)
                             end
-                            m.actionTimer = m.actionTimer + 15
+                            m.actionTimer = m.actionTimer + timePerInput*0.5
                         end
                     end
                 end
@@ -95,7 +116,7 @@ local function act_hold_bowser_qte(m)
         end
         if complete then
             if configSounds == 0 then
-                play_puzzle_jingle()
+                play_sound(SOUND_GENERAL2_RIGHT_ANSWER, gGlobalSoundSource)
             elseif configSounds == 1 then
                 audio_sample_play(SOUND_UNLEASHED_FINISHED, gGlobalSoundSource, 1)
             end
@@ -194,38 +215,66 @@ hook_mario_action(ACT_HOLDING_BOWSER, act_hold_bowser_qte)
 local wasQuickTime = false
 local xPosLerp = 0
 local greyLerp = 1
+local barLerp = 0
+local timerLerp = 0
 local function on_hud_render()
     djui_hud_set_resolution(RESOLUTION_N64)
+    local sW = djui_hud_get_screen_width() + 1
+    local sH = djui_hud_get_screen_height()
 
     if m.action == ACT_HOLDING_BOWSER or m.action == ACT_RELEASING_BOWSER then
+        local timer = (m.action == ACT_HOLDING_BOWSER and m.actionState == 1) and m.actionTimer/(#currQuickTime * timePerInput) or 0
         wasQuickTime = true
+
+        djui_hud_set_color(0, 0, 0, 255)
+        djui_hud_render_rect(0, 0, sW, barLerp - 1)
+        djui_hud_render_rect(0, sH - barLerp, sW, barLerp + 1)
+
         if m.action == ACT_HOLDING_BOWSER and m.actionState == 1 then
-            local totalTimer = (#currQuickTime * timePerInput)
-            greyLerp = math.lerp(greyLerp, 0.2 + 0.4*(m.actionTimer/totalTimer), 0.1)
-            djui_hud_set_font(FONT_HUD)
-            local xPosTarget = 0
-            for inputNum, input in pairs(currQuickTime) do
-                if input.hit then
-                    xPosTarget = xPosTarget + 18
-                    input.opacity = math.lerp(input.opacity, 0, 0.2)
-                end
-                djui_hud_set_color(255, 255, 255, input.opacity)
-                djui_hud_print_text(input.text, 50 + math.max((inputNum - 1)*18 - xPosLerp, 0), 50 + (1 - input.opacity/255)*50, 1, 1)
-            end
-            xPosLerp = math.lerp(xPosLerp, xPosTarget, 0.2)
-            djui_hud_render_rect(50, 70, (#currQuickTime * timePerInput) - m.actionTimer, 5)
-            -- cam logic in action
+            greyLerp = math.lerp(greyLerp, 0.2 + 0.4*timer, 0.1)
+            barLerp = math.lerp(barLerp, 35, 0.1)
+            timerLerp = math.floor(math.lerp(timerLerp, (#currQuickTime * timePerInput) - m.actionTimer, m.actionTimer > 1 and 0.5 or 1))
         else
             greyLerp = math.lerp(greyLerp, 1, 0.1)
+            barLerp = math.lerp(barLerp, -30, 0.1)
+            timerLerp = math.floor(math.lerp(timerLerp, 0, 0.1))
         end
+
+        djui_hud_set_font(FONT_HUD)
+        local xPosTarget = 0
+        for inputNum, input in pairs(currQuickTime) do
+            if input.hit then
+                xPosTarget = xPosTarget + 18
+                input.opacity = math.lerp(input.opacity, 0, 0.2)
+            end
+            djui_hud_set_color(255, 255, 255, input.opacity)
+            djui_hud_print_text(input.text, 24 + math.max((inputNum - 1)*18 - xPosLerp, 0), sH - (barLerp + 21) - (1 - input.opacity/255)*50, 1, 1)
+        end
+        if m.actionTimer > 1 then
+            xPosLerp = math.lerp(xPosLerp, xPosTarget, 0.2)
+        end
+
+        local timerSecs = math.floor(timerLerp  / 30);
+        local timerFracSecs = math.floor(((timerLerp - (timerSecs * 30)) & 0xFFFF) / 3);
+        djui_hud_set_color(255, 255, 255, 255)
+        local x = sW - 37
+        djui_hud_print_text(tostring(timerFracSecs), x, barLerp + 5, 1, 1)
+        djui_hud_print_text('"', x - 9, barLerp - 2, 1, 1)
+        x = sW - 71
+        djui_hud_print_text(string.format("%02d", timerSecs), x, barLerp + 5, 1, 1)
+        x = x - 15 - djui_hud_measure_text("TIME")
+        djui_hud_print_text("TIME", x, barLerp + 5, 1, 1)
+        
         set_shader_flag_enabled(SHADER_FLAG_SATURATION, true)
         set_shader_flag_value(SHADER_FLAG_SATURATION, greyLerp)
+
         camera_freeze()
     elseif wasQuickTime then
         set_shader_flag_enabled(SHADER_FLAG_SATURATION, false)
         camera_unfreeze()
         xPosLerp = 0
         greyLerp = 1
+        barLerp = -30
     end
 end
 
@@ -233,10 +282,18 @@ local function update()
     if gMarioStates[0].controller.buttonPressed & U_JPAD ~= 0 then
         warp_to_level(LEVEL_BOWSER_3, 1, 0)
     end
+    if gMarioStates[0].controller.buttonPressed & L_JPAD ~= 0 then
+        warp_to_level(LEVEL_BOWSER_1, 1, 0)
+    end
+    if gMarioStates[0].controller.buttonPressed & R_JPAD ~= 0 then
+        warp_to_level(LEVEL_BOWSER_2, 1, 0)
+    end
 end
 
 hook_event(HOOK_UPDATE, update)
-hook_event(HOOK_ON_HUD_RENDER, on_hud_render)
+hook_event(HOOK_ON_MODS_LOADED, function()
+    hook_event(HOOK_ON_HUD_RENDER, on_hud_render)
+end)
 
 ---@param string string
 --- Splits a string into a table by spaces
@@ -258,13 +315,22 @@ local function chat_command(msg)
         if msgSplit[2] == "sm64" then
             configSounds = 0
             mod_storage_save_integer("configSounds", configSounds)
+            djui_chat_message_create("Quick Time Event Sounds set to \\#ffff33\\Super Mario 64")
+            return true
         elseif msgSplit[2] == "unleashed" then
             configSounds = 1
             mod_storage_save_integer("configSounds", configSounds)
+            djui_chat_message_create("Quick Time Event Sounds set to \\#ffff33\\Sonic Unleashed")
+            return true
         end
+
+        djui_chat_message_create("Inputs must be 'sm64' or 'unleashed'")
+        return true
     end
 
+    djui_chat_message_create("Quick Time Event Commands:"..
+    "\n\\#ffff33\\/qte sounds\\#ffffff\\ - Toggles which sounds to use during Quick Time Event")
     return true
 end
 
-hook_chat_command("qte", "Configure Quick Time Event Settings", chat_command)
+hook_chat_command("qte", "- Configure Quick Time Event Settings", chat_command)

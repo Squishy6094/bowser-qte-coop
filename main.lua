@@ -2,6 +2,14 @@
 
 local configSounds = mod_storage_load_integer("configSounds", 0)
 
+local brutal = false
+for _, mod in pairs(gActiveMods) do
+    if mod.name:find("Brutal Bosses") then
+        brutal = true
+        break
+    end
+end
+
 local m = gMarioStates[0] ---@type MarioState
 local l = gLakituState
 
@@ -19,17 +27,46 @@ local SOUND_UNLEASHED_HIT = audio_sample_load("qte_unleashed_hit.ogg")
 local SOUND_UNLEASHED_MISS = audio_sample_load("qte_unleashed_miss.ogg")
 
 local function get_bowser_qte_inputs(o)
-    if o.oBehParams2ndByte == 0 then
-        return 5, 30
-    elseif o.oBehParams2ndByte == 1 then
-        return 10, 20
-    elseif o.oBehParams2ndByte == 2 then
-        if o.oHealth == 3 then
-            return 15, 15
-        elseif o.oHealth == 2 then
-            return 17, 15
-        elseif o.oHealth == 1 then
-            return 20, 15
+    djui_chat_message_create(tostring(o.oHealth))
+    if brutal then
+        if o.oBehParams2ndByte == 0 then
+            if o.oHealth == 3 then
+                return 14, 16
+            elseif o.oHealth == 2 then
+                return 17, 15
+            elseif o.oHealth == 1 then
+                return 20, 14
+            end
+        elseif o.oBehParams2ndByte == 1 then
+            if o.oHealth == 3 then
+                return 20, 15
+            elseif o.oHealth == 2 then
+                return 25, 14
+            elseif o.oHealth == 1 then
+                return 30, 13
+            end
+        elseif o.oBehParams2ndByte == 2 then
+            if o.oHealth == 3 then
+                return 30, 14
+            elseif o.oHealth == 2 then
+                return 40, 13
+            elseif o.oHealth == 1 then
+                return 50, 12
+            end
+        end
+    else
+        if o.oBehParams2ndByte == 0 then
+            return 5, 30
+        elseif o.oBehParams2ndByte == 1 then
+            return 10, 20
+        elseif o.oBehParams2ndByte == 2 then
+            if o.oHealth == 3 then
+                return 14, 15
+            elseif o.oHealth == 2 then
+                return 17, 14
+            elseif o.oHealth == 1 then
+                return 20, 13
+            end
         end
     end
 end
@@ -52,8 +89,6 @@ local function act_hold_bowser_qte(m)
             end
         end
     end
-
-    djui_chat_message_create(tostring(m.usedObj.oHealth))
 
     -- Initialize Quick Time event
     if m.actionState == 0 then
